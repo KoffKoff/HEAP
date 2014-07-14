@@ -17,8 +17,13 @@ tranquility = "https://api.eveonline.com"
 --needs API key
 accStatus = "/account/AccountStatus.xml.aspx"
 charList = "/account/Characters.xml.aspx"
---needs API key + char id
+keyInfo = "/account/APIKeyInfo.xml.aspx"
+--needs API key + characterID
 charSheet = "/char/CharacterSheet.xml.aspx"
+accBalance = "/char/AccountBalance.xml.aspx"
+assets = "/char/AssetList.xml.aspx"
+contacts = "/char/ContactList.xml.aspx"
+contactNoti = "/char/ContactNotifications.xml.aspx"
 
 type KeyValue = (S.ByteString,S.ByteString)
 type KeyID = Int
@@ -156,5 +161,13 @@ createName name = Name (pack name) Nothing Nothing
 showName :: Name -> Text
 showName name = nameLocalName name
 
-testKey1 = Key 2842008 $ SC.pack "1rDrReEjIL0PDJWaLlmbXLaAolPPJqGP2hqWR0nqHGWPjXeWV5ujjHvU80qevwh1"
-testKey2 = Key 1839920 $ SC.pack "ejBrOFkYOT2UYQviZst4hOxZbzhn81sENRV87RqCJfOqEoWlrQzFpJfQpnWWsDto"
+charID :: KeyValue
+charID = (SC.pack "characterID", SC.pack "94792304")
+
+--Character key
+testKey1 :: APIKey
+testKey1 = Key 3523746 $ SC.pack "f3hP9AowjgJXd9j4FuNSz8A5PGUlciG6a7t1vQvOj4jVt8TZsEFWjoSbhKxrFJCl"
+
+--Account Key
+testKey2 :: APIKey
+testKey2 = Key 3523745 $ SC.pack "ZGNUWzSDUmoMsTiVrcM4vMQxDkzK8xD4iVTySEiLr9xKEqn3xe3cvalCXmZpdL71"
