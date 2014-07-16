@@ -15,6 +15,10 @@ import Prelude hiding (lookup)
 import Data.Text hiding (take,drop,map,unlines,init,concat)
 import Data.Matrix
 import Data.Map hiding (map,lookup,fromList)
+import Data.Binary
+import Control.Monad
+import Data.Text.Internal (Text(..))
+import Data.Text.Array
 
 data EveData = Rowset Rowset
              | Misc Text Data
@@ -38,6 +42,34 @@ instance Show EveData where
 instance Show Rowset where
   show (RS name key matrix) = "Rowset: " ++ unpack name ++ "\n"
                               ++ take 16 (unpack key ++ repeat ' ') ++ drop 16 (show matrix)
+
+instance Binary Data where
+  put Empty     = putWord8 0
+  put (EText t) = putWord8 1 >> put t
+  put (EData d) = putWord8 2 >> put d
+  get = do
+    tag <- getWord8
+    case tag of
+      0 -> return Empty
+      1 -> liftM EText get
+      2 -> liftM EData get
+
+instance Binary EveData where
+  put (Rowset rs) = putWord8 0 >> put rs
+  put (Misc n c)  = putWord8 1 >> put n >> put c
+  get = do
+    tag <- getWord8
+    case tag of
+      0 -> liftM Rowset get
+      1 -> liftM2 Misc get get
+
+instance Binary Rowset where
+  put (RS n k m) = put n >> put k >> put m
+  get = liftM3 RS get get get
+
+instance Binary Text where
+  put t = put $ unpack t
+  get = liftM pack get
 
 type Row = [(Text,Data)]
 

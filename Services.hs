@@ -77,3 +77,20 @@ stations       = corp ++ "/OutpostList.xml.aspx"
 -- Needs itemID
 stationService = corp ++"/OutpostServiceDetail.xml.aspx"
 titles = corp ++ "/Titles.xml.aspx"
+
+
+-------- Test data
+charID :: (String,String)
+charID = ("characterID", "94792304")
+
+--Character key
+testKey1 :: [(String,String)]
+testKey1 =
+  [("keyID","3523746")
+  ,("vCode","f3hP9AowjgJXd9j4FuNSz8A5PGUlciG6a7t1vQvOj4jVt8TZsEFWjoSbhKxrFJCl")]
+
+--Account Key
+testKey2 :: [(String,String)]
+testKey2 =
+  [("keyID","3523745")
+  ,("vCode","ZGNUWzSDUmoMsTiVrcM4vMQxDkzK8xD4iVTySEiLr9xKEqn3xe3cvalCXmZpdL71")]

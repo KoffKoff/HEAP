@@ -14,6 +14,8 @@ import qualified Data.Map as M
 import Data.Array
 import qualified Data.List as L
 import Data.Maybe (fromJust)
+import Data.Binary
+import Control.Monad
 
 data Matrix r c v = M { rowIndex :: (Map r Int) 
                       , colIndex :: (Map c Int)
@@ -28,6 +30,10 @@ instance (Show r,Show c,Show v,Ord r,Ord c) => Show (Matrix r c v) where
     where
       rowConverter :: (Show a,Show v) => a -> Map k v -> String
       rowConverter k m = format 16 $ show k:M.foldr ((:) . (:) '|' . show) [] m
+
+instance (Binary r, Binary c, Binary v) => Binary (Matrix r c v) where
+  put (M r c v) = put r >> put c >> put v
+  get = liftM3 M get get get
 
 format :: Int -> [String] -> String
 format _ [] = ""
