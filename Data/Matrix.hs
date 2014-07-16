@@ -7,17 +7,13 @@ module Data.Matrix
        , rowNames
        , colNames
        , Data.Matrix.size
-       , rSize
-       , cSize
        ) where
-
-import qualified Prelude as P
 import Prelude hiding (lookup,map)
 import Data.Map hiding ((!))
 import qualified Data.Map as M
 import Data.Array
 import qualified Data.List as L
-import Data.Maybe
+import Data.Maybe (fromJust)
 
 data Matrix r c v = M { rowIndex :: (Map r Int) 
                       , colIndex :: (Map c Int)
@@ -44,7 +40,7 @@ fromList rcv =
       cMap = get snd rcv
       convert ((r,c),v) = ((rMap M.! r,cMap M.! c),v)
       matrixBounds = ((0,0),(M.size rMap - 1,M.size cMap - 1))
-  in M rMap cMap $ array matrixBounds $ P.map convert rcv
+  in M rMap cMap $ array matrixBounds $ L.map convert rcv
   where get f = M.fromList . flip zip [0..] . L.nub . L.map (f . fst)
 
 lookupRow :: Ord r => r -> Matrix r c v -> Maybe (Map c v)
@@ -71,12 +67,6 @@ colNames = names colIndex
 
 names :: (Matrix r c v -> Map a b) -> Matrix r c v -> [a]
 names = (.) (reverse . foldlWithKey (\rs r _ -> r:rs) [])
-
-rSize :: Matrix r c v -> Int
-rSize = fst . Data.Matrix.size
-
-cSize :: Matrix r c v -> Int
-cSize = snd . Data.Matrix.size
 
 size :: Matrix r c v -> (Int,Int)
 size = (\(r,c) -> (r+1,c+1)) . snd . bounds . matrix
