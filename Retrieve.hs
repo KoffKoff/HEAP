@@ -1,17 +1,22 @@
-module Retrieve where
+module Retrieve ( EveData (..)
+                , Rowset
+                , Data (..)
+                , Text
+                , name
+                ) where
 
+import Prelude as P
 import Network.HTTP.Conduit
 import qualified Data.ByteString as S hiding (pack,unpack,map)
 import qualified Data.ByteString.Char8 as SC (pack,unpack)
---import Data.ByteString.Lazy as L (pack,unpack,map)
---import Data.ByteString.Lazy as LC (pack,unpack)
 import Text.XML
---import Text.XML.Cursor
 import Data.Default
 import Data.Map as M hiding (map)
 import Data.Text as T hiding (head,unlines,init,map)
 import Data.List as List (find)
 import qualified Data.Maybe as May
+
+import Data.Matrix as Mat
 
 tranquility = "https://api.eveonline.com"
 --needs API key
@@ -30,11 +35,10 @@ type KeyID = Int
 type VCode = S.ByteString
 type URL = String
 
-data EveData = Rowset RS
-             | Misc Name Data
+data EveData = Rowset Rowset
+             | Misc Text Data
 
-data RS = RS Text Text [Text] [Row]
-data Row = R (Map Name Text) Data
+data Rowset = RS {name :: Text, key :: Text, matrix :: Matrix Text Text Data}
 
 data Data = EEmpty
           | EText Text
@@ -42,28 +46,21 @@ data Data = EEmpty
 
 instance Show Data where
   show EEmpty = ""
-  show (EText t) = "Text: " ++ unpack t
-  show (ED rs) = "Data:\n" ++ init (unlines (map show rs))
+  show (EText t) = unpack t
+  show (ED rs) = "Data: " ++ init (unlines (map show rs))
 
 instance Show EveData where
   show (Rowset rs) = show rs
-  show (Misc name cont) = "Misc: " ++ unpack (showName name) ++ ", " 
+  show (Misc name cont) = "Misc: " ++ unpack name ++ ", " 
                           ++ show cont
 
-instance Show RS where
-  show (RS name key columns rss) = "Rowset: " ++ unpack name ++ ", key=" ++
-                                   unpack key ++ showRows rss
-    where showRows [] = ""
-          showRows (r:rs) = "\n  " ++ show r ++ showRows rs
-
-instance Show Row where
-  show (R map rd) = "Row: " ++ foldlWithKey fixMap "[" map ++ "]" ++ show rd
-    where fixMap str k v = str ++ "(" ++ unpack (showName k) ++ ", " ++ unpack v
-                           ++ ")"
-
---data Row = R (Map String String) [EveData]
+instance Show Rowset where
+  show (RS name key matrix) = "Rowset: " ++ unpack name ++ "\n"
+                              ++ P.take 16 (unpack key ++ repeat ' ') ++ P.drop 16 (show matrix)
 
 data APIKey = Key {keyID :: KeyID, vCode :: VCode}
+
+type Row = [(Text,Data)]
 
 data ParsedNode = TN Text
                 | RN [Row]
@@ -71,11 +68,8 @@ data ParsedNode = TN Text
                 | Empty
 
 --test :: [KeyValue] -> URL -> IO (Response S.ByteString)
-test body url = do
-  makePostRequest url body >>= withManager . httpLbs
-
-convert :: APIKey -> [KeyValue]
-convert (Key id code) = [(SC.pack "keyID", SC.pack $ show id),(SC.pack "vCode",code)]
+fetchData server service body = do
+  makePostRequest (server ++ service) body >>= withManager . httpLbs
 
 --extract :: Monad m => ByteString -> m EveData
 extract bs = do
@@ -87,23 +81,35 @@ parseElem (Element name attr ns) = do
   parsedNodes <- parseNode ns
   if name == createName "rowset"
     then getRows parsedNodes >>= constructRS attr >>= return . Rowset
-    else excludeRows parsedNodes >>= return . Misc name
+    else toData parsedNodes >>= return . Misc (nameLocalName name)
   where getRows (RN rows) = return rows
         getRows Empty     = return []
         getRows _         = fail "Rowset: Malformed nodes"
 
-excludeRows :: Monad m => ParsedNode -> m Data
-excludeRows (TN t) = return $ EText t
-excludeRows (EN e) = return $ ED e
-excludeRows Empty  = return EEmpty
-excludeRows _      = fail "Misc: malformed nodes"
+toData :: Monad m => ParsedNode -> m Data
+toData (TN t) = return $ EText t
+toData (EN e) = return $ ED e
+toData Empty  = return EEmpty
+toData _      = fail "Misc: malformed nodes"
 
-constructRS :: Monad m => Map Name Text -> [Row] -> m RS
+constructRS :: Monad m => Map Name Text -> [Row] -> m Rowset
 constructRS attr rows = do
   name <- first (createName "name") attr
   key  <- first (createName "key") attr
-  col  <- first (createName "columns") attr
-  return $ RS name key (parseCols col) rows
+  let rcv = P.concat $ map (prepForMatrix key) rows
+  return $ RS name key $ Mat.fromList rcv
+
+prepForMatrix :: Text -> Row -> [((Text,Text),Data)]
+prepForMatrix k cvs = snd $ prepMat k cvs
+  where prepMat k ((c,v):cvs) | k == c = 
+          let EText r = v
+          in (r,prepMat' r cvs)
+                              | True =
+          let (r,rcvs) = prepMat k cvs
+          in (r,((r,c),v):rcvs)
+        prepMat k [] = (k,[])
+        prepMat' _ [] = []
+        prepMat' r ((c,v):cvs) = ((r,c),v):prepMat' r cvs
 
 parseCols :: Text -> [Text]
 parseCols = splitOn $ pack ","
@@ -118,9 +124,14 @@ parseNode (NodeElement ele:xs) | elementName ele == createName "row" = do
     (RN rs) -> return rs
     Empty   -> return []
     _       -> fail "Rows and other data types"
-  parsedNodes <- parseNode $ elementNodes ele
-  r <- excludeRows parsedNodes
-  return $ RN (R (elementAttributes ele) r:rs)
+  parsed <- parseNode $ elementNodes ele
+  rowData <- toData parsed
+  let row = foldrWithKey (\k v -> (:) (nameLocalName k, EText v)) [] (elementAttributes ele)
+      row' = case rowData of
+        EText _ -> (pack "ExtraData",rowData):row
+        ED _    -> (pack "ExtraData",rowData):row
+        EEmpty  -> row
+  return $ RN (row':rs)
                                | otherwise = do
   parsedSuff <- parseNode xs
   case parsedSuff of
@@ -130,16 +141,6 @@ parseNode (NodeElement ele:xs) | elementName ele == createName "row" = do
       return $ EN (ed:eds)
     _ -> fail "Evedata with other stuff"
 parseNode _ = fail "Unsupported node"
-{-
-getRow ::  Monad m => ParsedNode -> m Data
-getRow (EN eds) = return $ RSet $ head $ May.mapMaybe isRowset eds
-getRow Empty    = return REmpty
-getRow (TN t)   = return $ RText t
-getRow _ = fail "Row: Not rowset"
-
-isRowset :: EveData -> Maybe RS
-isRowset (Rowset rs) = Just rs
-isRowset _ = Nothing-}
 
 first :: (Monad m,Ord k) => k -> Map k v -> m v
 first k map = case M.lookup k map of
@@ -149,17 +150,14 @@ first k map = case M.lookup k map of
 --makePostRequest :: Control.Monad.Catch.MonadThrow m => String -> [KeyValue] -> m Request
 makePostRequest url body = parseUrl url >>= return . urlEncodedBody body
 
-rowset :: Name
-rowset = createName "rowset"
-
-row :: Name
-row = createName "row"
-
 createName :: String -> Name
 createName name = Name (pack name) Nothing Nothing
 
 showName :: Name -> Text
 showName name = nameLocalName name
+
+convert :: APIKey -> [KeyValue]
+convert (Key id code) = [(SC.pack "keyID", SC.pack $ show id),(SC.pack "vCode",code)]
 
 charID :: KeyValue
 charID = (SC.pack "characterID", SC.pack "94792304")
