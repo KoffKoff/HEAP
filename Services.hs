@@ -1,5 +1,15 @@
 module Services where
 
+import Abs
+import Data.Array
+
+--getService :: Service -> String
+-- Account related
+--needs API key
+accStat = "/account/AccountStatus.xml.aspx"
+characs = "/account/Characters.xml.aspx"
+keyInfo = "/account/APIKeyInfo.xml.aspx"
+
 singularity = "https://api.testeveonline.com"
 tranquility = "https://api.eveonline.com"
 
@@ -7,13 +17,7 @@ char = "/char"
 corp = "/corp"
 
 -- API list
-api = "/api/CallList.xml.aspx"
-
--- Account reletad
---needs API key
-accStatus = "/account/AccountStatus.xml.aspx"
-charList = "/account/Characters.xml.aspx"
-keyInfo = "/account/APIKeyInfo.xml.aspx"
+apiList = "/api/CallList.xml.aspx"
 
 -- Character related
 -- All below needs API key + characterID
@@ -59,7 +63,7 @@ accJour c = c ++ "/WalletJournal.xml.aspx"
 accTrans c = c ++ "/WalletTransactions.xml.aspx"
 
 -- Corp Related
--- Needs Corp API
+-- Needs Corp API or Corp APIKey
 corpSheet = corp ++ "CorporationSheet.xml.aspx"
 -- All below need Needs API key + characterID
 containerLog = corp ++ "/ContainerLog.xml.aspx"

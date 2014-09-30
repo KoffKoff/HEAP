@@ -1,84 +1,32 @@
-module Retrieve ( getData ) where
+module Retrieve where
 
-import Prelude hiding (lookup)
 import Network.HTTP.Conduit
-import qualified Data.ByteString as S hiding (pack,unpack,map)
-import qualified Data.ByteString.Char8 as SC (pack,unpack)
-import Text.XML
-import Data.Map as Map hiding (map,fromList)
-import Data.Text (Text,pack,unpack,isPrefixOf)
+import Data.ByteString as S (ByteString)
+import Data.ByteString.Char8 as S (pack)
+import Data.ByteString.Lazy.Char8 as L (unpack)
+--import Data.Time.Clock
+import Control.Monad.IO.Class
 
-import Data.Matrix as Matrix
 import Services
 import Abs
+import Util
 
-type Row = [(Text,Data)]
-
-getData :: String -> String -> [(String,String)] -> IO EveData
-getData server service requests = do
-  response <- callEve server service $ map convert requests
-  case parseLBS def (responseBody response) of
-    Right doc -> parseElem $ documentRoot doc
-    Left e -> fail $ show e
-
-convert :: (String,String) -> (S.ByteString,S.ByteString)
-convert (key,value) = (SC.pack key, SC.pack value)
-
-
--------- Converts XML to EVEData
-parseElem :: Monad m => Element -> m EveData
-parseElem (Element name attr ns) = do
-  if nameLocalName name == pack "rowset"
-    then parseRows ns >>= constructRS attr >>= return . Rowset
-    else parseNode ns >>= return . Misc (nameLocalName name)
-
-parseNode :: Monad m => [Node] -> m Data
-parseNode [] = return Empty
-parseNode (NodeContent text:xs) | isNoneData text = parseNode xs
-                                | otherwise = return $ EText text
-parseNode (NodeElement element:xs) = do
-  parsedSuff <- parseNode xs
-  case parsedSuff of
-    Empty -> parseElem element >>= return . EData . flip (:) []
-    (EData eds) -> do
-      ed <- parseElem element
-      return $ EData (ed:eds)
-    _ -> fail "Evedata with Text"
-parseNode _ = fail "parseNode: Found Illegal data"
-
--- Construction of matrix
-constructRS :: Monad m => Map Name Text -> [Row] -> m Rowset
-constructRS attr rows = do
-  name <- first "name" attr
-  key  <- first "key" attr
-  return $ makeRowset name key rows
-  where first k map = case Map.lookup (createName k) map of
-          Just v  -> return v
-          Nothing -> fail "No such element in map"
-        createName name = Name (pack name) Nothing Nothing
-
-parseRows :: Monad m => [Node] -> m [Row]
-parseRows [] = return []
-parseRows (NodeElement ele:xs) | nameLocalName (elementName ele) /= pack "row" =
-  fail "parseRows: Not a row"
-                               | otherwise = do
-  parsedRows <- parseRows xs
-  rowData <- parseNode $ elementNodes ele
-  let row = foldrWithKey (\k v -> (:) (nameLocalName k, EText v)) [] (elementAttributes ele)
-      row' = case rowData of
-        Empty   -> row
-        _ -> (pack "ExtraData",rowData):row
-  return $ row':parsedRows
-parseRows (NodeContent text:xs) | isNoneData text = parseRows xs 
-                                | otherwise = fail "parseRows: Not an element"
-
-isNoneData = isPrefixOf (pack "\r\n")
-
+--Creates an api request using Network.HTTP.Conduit
+-- Could be generalized to 
+--constructReq :: (MonadIO m, MonadBaseControl IO m, MonadThrow m, Req q) => API q (m String) r
+requestData :: Service s => ReqData s -> IO String
+requestData req = do
+  response <- callEve (getService $ reqService req) (reqData req)
+  return $ unpack $ responseBody response
 
 -------- Functions and data structures for contacting the EVE API
---callEve :: String -> String -> KeyValue -> IO (Response ByteString)
-callEve server service body = do
+--callEve :: (MonadIO m, MonadBaseControl IO m, MonadThrow m) =>
+--           String -> Service -> [RequestAttr] -> m (Response LS.ByteString)
+callEve (server, service) body = do
   makePostRequest (server ++ service) body >>= withManager . httpLbs
 
 --makePostRequest :: MonadThrow m => String -> [(S.ByteString,S.ByteString)] -> m Request
-makePostRequest url body = parseUrl url >>= return . urlEncodedBody body
+makePostRequest url body = parseUrl url >>= return . urlEncodedBody (map packPair body)
+
+packPair :: (String,String) -> (ByteString,ByteString)
+packPair (f,s) = (pack f,pack s)
