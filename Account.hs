@@ -1,5 +1,14 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances #-}
-module Account where
+module Account (AccStat
+               ,KeyInfo
+               ,Characs
+               ,AccStatResult(..)
+               ,APIKeyInfo(..)
+               ,Characters(..)
+               ,Character
+               ,getService
+               ,parse
+               ) where
 
 import Data.Time
 
@@ -16,16 +25,16 @@ data Characs = CL
 instance Service AccStat where
   getService AS = (tranquility, accStat)
 instance Service KeyInfo where
-  getService KI = (tranquility, keyInfo)
+  getService KI = (tranquility, accKeIn)
 instance Service Characs where
-  getService CL = (tranquility, characs)
+  getService CL = (tranquility, accChar)
 
 instance Parseable AccStat AccStatResult where
-  parseFun AS = stdParse
+  parse _ = stdParse
 instance Parseable KeyInfo APIKeyInfo where
-  parseFun KI = stdParse
+  parse _ = stdParse
 instance Parseable Characs Characters where
-  parseFun CL = stdParse
+  parse _ = stdParse
 
 instance Constructable AccStatResult where
   construct inputs = do
@@ -51,7 +60,7 @@ instance Constructable Characters where
     createChars "name" rs >>= return . AccCL
 
 createChars :: Monad m => String -> Parsed -> m [Character]
-createChars charName (Rowset name _ (M _ cols vals))
+createChars charName (Rowset name _ (_,cols,vals))
   | name == "characters" = mapM (createChar charName cols) vals
   | otherwise = fail $ "Not a characters rowset: " ++ name
 createChars _ el = fail $ "Not a rowset: " ++ show el

@@ -1,4 +1,4 @@
-module Retrieve where
+module Retrieve (requestData) where
 
 import Network.HTTP.Conduit
 import Data.ByteString as S (ByteString)

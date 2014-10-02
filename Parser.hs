@@ -1,4 +1,7 @@
-module Parser where
+module Parser (Parsed(..)
+              ,Constructable(..)
+              ,stdParse
+              )where
 
 import Text.XML.Light
 import Data.Time.Clock
@@ -6,11 +9,10 @@ import Control.Monad
 import Data.List.Split (splitOn)
 
 import Abs
---import Data.Matrix
 
-data Matrix = M [String] [String] [[String]]
-  deriving Show
+type Matrix = ([String],[String],[[String]])
 
+-- Does not yet support data in rows
 data Parsed = Normal {name :: String, value :: Either String [Parsed], attr :: [(String,String)]}
             | Rowset {name :: String, key :: String, content :: Matrix}
   deriving Show
@@ -18,17 +20,20 @@ data Parsed = Normal {name :: String, value :: Either String [Parsed], attr :: [
 class Constructable r where
   construct :: Monad m => [Parsed] -> m r
 
+-- Parser for the case when there are no attributes in the tags
+stdParse :: (Constructable r, Monad m) => String -> m (Result r)
+stdParse str = do
+  el <- parseHttpResponse str
+  (created,elems,cached) <- getResultContent el
+  attrs <- mapM parseElem elems
+  resultData <- construct attrs
+  return $ Result created resultData cached
+
 -- Extracts the first XML element.
 parseHttpResponse :: (Monad m) => String -> m Element
 parseHttpResponse str = case parseXMLDoc str of
     Nothing -> fail "Illformed XML or something"
     Just el -> return el
-
--- Filters a list of contents to only elements
-filterToElem :: [Content] -> [Element]
-filterToElem [] = []
-filterToElem (Elem el:cs) = el:filterToElem cs
-filterToElem cs = (filterToElem . tail) cs
 
 -- Extracts the (CurrentTime, list of data, cachedUntil)
 getResultContent :: Monad m => Element -> m (UTCTime,[Element],UTCTime)
@@ -46,18 +51,6 @@ getResultContent el =
           Just (Normal _ (Left v) _) -> Just $ read v
           _                          -> Nothing
         nameEq e s = qName (elName e) == s
-
---stdParse :: (Constructable r,Monad m) => API q String (m (Result r))
---stdParse = APIResult stdParse'
-
--- Parser for the case when there are no attributes in the tags
-stdParse :: (Constructable r, Monad m) => String -> m (Result r)
-stdParse str = do
-  el <- parseHttpResponse str
-  (created,elems,cached) <- getResultContent el
-  attrs <- mapM parseElem elems
-  resultData <- construct attrs
-  return $ Result created resultData cached
 
 parseElem :: Monad m => Element -> m Parsed
 parseElem el = case qName (elName el) of
@@ -85,7 +78,7 @@ parseRowset el = do
 constructRSMatrix :: Monad m => String -> [String] -> [Element] -> m Matrix
 constructRSMatrix key cols els = do
   (rows,content) <-liftM unzip $ mapM (extractStuff key cols) els
-  return $ M rows cols content
+  return $ (rows,cols,content)
 
 extractStuff :: Monad m => String -> [String] -> Element -> m (String,[String])
 extractStuff key cols el | qName (elName el) /= "row" = fail $ "Not a row: " ++ show el
@@ -99,5 +92,13 @@ extractStuff key cols el | qName (elName el) /= "row" = fail $ "Not a row: " ++ 
           Nothing -> fail $ "Missing value: " ++ col ++ " in row: " ++ show kvs
           Just v  -> return $ cont ++ [v]
 
+------------------------------------------ Utility functions
+-- Converts an attribute to a key value pair
 convertToPair :: Attr -> (String,String)
 convertToPair attr = (qName (attrKey attr),attrVal attr)
+
+-- Filters a list of contents to only elements
+filterToElem :: [Content] -> [Element]
+filterToElem [] = []
+filterToElem (Elem el:cs) = el:filterToElem cs
+filterToElem cs = (filterToElem . tail) cs
